@@ -19,9 +19,11 @@ export default function ReviewAnalyzer() {
   // 输入框状态
   const [appUrl, setAppUrl] = useState('https://apps.apple.com/us/app/workout-for-women-home-gym/id839285684');
   const [apiKey, setApiKey] = useState('');
-  
-  // 初始化加载localStorage中保存的API Key
+  const [isClient, setIsClient] = useState(false);
+
+  // 初始化客户端并加载 localStorage
   useEffect(() => {
+    setIsClient(true);
     const savedKey = localStorage.getItem('openai_key') || '';
     setApiKey(savedKey);
   }, []);
@@ -63,67 +65,166 @@ export default function ReviewAnalyzer() {
     setModalOpen(true);
   };
 
+  // 辅助函数：从LLM返回的文本中智能提取JSON
+  const extractJsonFromText = (text: string, stepName: string = 'Unknown'): any => {
+    // 输出原始文本用于调试
+    console.log(`[${stepName}] LLM 返回的原始文本:`, text.substring(0, 500));
+    
+    // Step 1: 清除代码块标记
+    let cleaned = text
+      .replace(/```json\s*/g, '')
+      .replace(/```\s*/g, '')
+      .replace(/```\s*$/g, '')
+      .trim();
+    
+    console.log(`[${stepName}] 清除代码块后:`, cleaned.substring(0, 500));
+    
+    // Step 2: 移除 HTML 标签（如果有的话）
+    cleaned = cleaned.replace(/<[^>]*>/g, '');
+    
+    // Step 3: 找到第一个 { 和最后一个 }
+    const firstBrace = cleaned.indexOf('{');
+    const lastBrace = cleaned.lastIndexOf('}');
+    
+    if (firstBrace === -1 || lastBrace === -1 || lastBrace <= firstBrace) {
+      console.error(`[${stepName}] 无法找到JSON对象的边界`, { firstBrace, lastBrace, cleanedLength: cleaned.length });
+      throw new Error('无法在返回内容中找到JSON对象');
+    }
+    
+    // Step 4: 提取JSON子串
+    let jsonStr = cleaned.substring(firstBrace, lastBrace + 1);
+    console.log(`[${stepName}] 提取的JSON字符串:`, jsonStr.substring(0, 500));
+    
+    // Step 5: 尝试直接解析
+    try {
+      const result = JSON.parse(jsonStr);
+      console.log(`[${stepName}] JSON解析成功！`);
+      return result;
+    } catch (e) {
+      console.warn(`[${stepName}] 首次解析失败，尝试修复...`, e.message);
+    }
+    
+    // Step 6: 常见修复尝试
+    let attempts = [];
+    
+    // 尝试1: 修复单引号
+    let fixed1 = jsonStr.replace(/'/g, '"');
+    attempts.push({ name: '修复单引号', str: fixed1 });
+    
+    // 尝试2: 移除末尾逗号
+    let fixed2 = jsonStr
+      .replace(/,\s*}/g, '}')
+      .replace(/,\s*]/g, ']');
+    attempts.push({ name: '移除末尾逗号', str: fixed2 });
+    
+    // 尝试3: 结合修复
+    let fixed3 = jsonStr
+      .replace(/'/g, '"')
+      .replace(/,\s*}/g, '}')
+      .replace(/,\s*]/g, ']');
+    attempts.push({ name: '结合修复', str: fixed3 });
+    
+    for (let attempt of attempts) {
+      try {
+        const result = JSON.parse(attempt.str);
+        console.log(`[${stepName}] ${attempt.name}成功！`);
+        return result;
+      } catch (e) {
+        console.warn(`[${stepName}] ${attempt.name}失败:`, e.message);
+      }
+    }
+    
+    // 所有尝试都失败
+    console.error(`[${stepName}] 所有JSON解析尝试都失败，原始JSON:`, jsonStr);
+    throw new Error(`无法解析JSON内容（已尝试多种修复方式）`);
+  };
+
   // 完整6阶段串行流水线主函数
   const runAllPipeline = async () => {
-    if (!appUrl.trim() || !apiKey.trim()) return alert('请填写App Store链接与OpenAI API Key');
-    await initDB();
-    setCurrentStep(0);
+    try {
+      if (!appUrl.trim() || !apiKey.trim()) return alert('请填写App Store链接与OpenAI API Key');
+      await initDB();
+      setCurrentStep(0);
 
-    // Step1 美区评论采集
-    setLoadingStep(1);
-    const appId = extractAppId(appUrl);
-    const raw = await fetchUSReviews(appId!);
-    setRawReviewData(raw);
-    await saveRawData(raw);
-    setCurrentStep(1);
-    setLoadingStep(null);
+      // Step1 美区评论采集
+      setLoadingStep(1);
+      const appId = extractAppId(appUrl);
+      if (!appId) throw new Error('无法解析App ID，请检查链接格式');
+      const raw = await fetchUSReviews(appId);
+      if (!raw || !raw.reviewList) throw new Error('采集评论失败，请检查App链接是否正确');
+      setRawReviewData(raw);
+      await saveRawData(raw);
+      setCurrentStep(1);
+      setLoadingStep(null);
 
-    // Step2 评论清洗结构化
-    setLoadingStep(2);
-    const cleanList = cleanReviewData(raw.reviewList);
-    setCleanReviews(cleanList);
-    await saveCleanReviews(cleanList);
-    setCurrentStep(2);
-    setLoadingStep(null);
+      // Step2 评论清洗结构化
+      setLoadingStep(2);
+      const cleanList = cleanReviewData(raw.reviewList);
+      if (cleanList.length === 0) throw new Error('清洗后无有效评论数据');
+      setCleanReviews(cleanList);
+      await saveCleanReviews(cleanList);
+      setCurrentStep(2);
+      setLoadingStep(null);
 
-    // Step3 LLM分类 + 幻觉检测
-    setLoadingStep(3);
-    const classifyRes = await runLLMAnalysis(apiKey, LLM_PROMPTS.classifyReview, cleanList);
-    const painResult = JSON.parse(classifyRes.choices[0].message.content);
-    setPainPoints(painResult);
-    const suspect = detectHallucination(painResult, cleanList);
-    setHallucinationWords(suspect);
-    setCurrentStep(3);
-    setLoadingStep(null);
+      // Step3 LLM分类 + 幻觉检测
+      setLoadingStep(3);
+      const classifyRes = await runLLMAnalysis(apiKey, LLM_PROMPTS.classifyReview, cleanList);
+      if (!classifyRes || !classifyRes.choices || !classifyRes.choices[0]) {
+        throw new Error(`LLM API 返回错误: ${classifyRes?.error?.message || '未知错误'}`);
+      }
+      const classifyContent = classifyRes.choices[0].message?.content;
+      if (!classifyContent) throw new Error('LLM 返回空内容，请检查 API Key 是否有效');
+      const painResult = extractJsonFromText(classifyContent, 'Step3 LLM分类');
+      setPainPoints(painResult);
+      const suspect = detectHallucination(painResult, cleanList);
+      setHallucinationWords(suspect);
+      setCurrentStep(3);
+      setLoadingStep(null);
 
-    // Step4 版本规划 & PRD生成
-    setLoadingStep(4);
-    const prdRes = await runLLMAnalysis(apiKey, LLM_PROMPTS.generatePRD, painResult);
-    const prdResult = JSON.parse(prdRes.choices[0].message.content);
-    setVersionPlan(prdResult.versionPlan);
-    setPrdDoc(prdResult.prd);
-    setCurrentStep(4);
-    setLoadingStep(null);
+      // Step4 版本规划 & PRD生成
+      setLoadingStep(4);
+      const prdRes = await runLLMAnalysis(apiKey, LLM_PROMPTS.generatePRD, painResult);
+      if (!prdRes || !prdRes.choices || !prdRes.choices[0]) {
+        throw new Error(`PRD 生成失败: ${prdRes?.error?.message || '未知错误'}`);
+      }
+      const prdContent = prdRes.choices[0].message?.content;
+      if (!prdContent) throw new Error('PRD 生成返回空内容');
+      const prdResult = extractJsonFromText(prdContent, 'Step4 PRD生成');
+      setVersionPlan(prdResult.versionPlan);
+      setPrdDoc(prdResult.prd);
+      setCurrentStep(4);
+      setLoadingStep(null);
 
-    // Step5 PRD完成过渡
-    setCurrentStep(5);
+      // Step5 PRD完成过渡
+      setCurrentStep(5);
 
-    // Step6 生成带溯源测试用例
-    setLoadingStep(6);
-    const caseRes = await runLLMAnalysis(apiKey, LLM_PROMPTS.generateTestCase, prdResult.prd);
-    const caseResult = JSON.parse(caseRes.choices[0].message.content);
-    setTestCases(caseResult.testCases);
-    // 全流程快照本地存档
-    await saveAnalysisSnapshot({
-      rawReviewData: raw,
-      cleanReviews: cleanList,
-      painPoints: painResult,
-      versionPlan: prdResult.versionPlan,
-      prdDoc: prdResult.prd,
-      testCases: caseResult.testCases
-    });
-    setCurrentStep(6);
-    setLoadingStep(null);
+      // Step6 生成带溯源测试用例
+      setLoadingStep(6);
+      const caseRes = await runLLMAnalysis(apiKey, LLM_PROMPTS.generateTestCase, prdResult.prd);
+      if (!caseRes || !caseRes.choices || !caseRes.choices[0]) {
+        throw new Error(`测试用例生成失败: ${caseRes?.error?.message || '未知错误'}`);
+      }
+      const caseContent = caseRes.choices[0].message?.content;
+      if (!caseContent) throw new Error('测试用例生成返回空内容');
+      const caseResult = extractJsonFromText(caseContent, 'Step6 测试用例生成');
+      setTestCases(caseResult.testCases);
+      await saveAnalysisSnapshot({
+        rawReviewData: raw,
+        cleanReviews: cleanList,
+        painPoints: painResult,
+        versionPlan: prdResult.versionPlan,
+        prdDoc: prdResult.prd,
+        testCases: caseResult.testCases
+      });
+      setCurrentStep(6);
+      setLoadingStep(null);
+    } catch (error: any) {
+      const errorMsg = error.message || String(error);
+      alert(`流水线执行出错: ${errorMsg}`);
+      console.error('流水线错误详情:', error);
+      setLoadingStep(null);
+      setCurrentStep(0);
+    }
   };
 
   return (

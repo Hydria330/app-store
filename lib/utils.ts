@@ -5,42 +5,93 @@ export function extractAppId(url: string): string | null {
 }
 
 export async function fetchUSReviews(appId: string) {
-  const proxyUrl = `/rss-proxy/us/rss/customerreviews/id=${appId}/sortBy=mostRecent/json`
-  const res = await fetch(proxyUrl)
-  const rawData = await res.json()
+  const proxyUrl = `/rss-proxy/us/rss/customerreviews/id=${appId}/sortBy=mostRecent/json`;
+  const res = await fetch(proxyUrl);
+  
+  if (!res.ok) {
+    throw new Error(`获取评论失败: HTTP ${res.status}`);
+  }
+  
+  const rawData = await res.json();
+  const reviewList = rawData.feed?.entry || rawData.entry || [];
+  
+  if (!Array.isArray(reviewList)) {
+    throw new Error('API 返回数据格式错误，无法解析');
+  }
+  
   return {
     requestUrl: `https://itunes.apple.com/us/rss/customerreviews/id=${appId}/sortBy=mostRecent/json`,
     timestamp: new Date().toISOString(),
     rawJson: rawData,
-    reviewList: rawData.feed.entry || []
-  }
+    reviewList: reviewList
+  };
 }
 
 // 2. 评论清洗拆分逻辑
 function splitMultiDemandText(text: string) {
-  return text.split(/[.;!？！]/).filter(s => s.trim().length > 5)
+  if (!text || text.trim().length < 3) return [];
+  return text.split(/[.;!？！。，、；]/g)
+    .map(s => s.trim())
+    .filter(s => s.length > 2);
 }
 
 export function cleanReviewData(rawReviews: any[]) {
-  const cleaned: any[] = []
-  for (const item of rawReviews) {
-    const title = item.title?.label || ''
-    const content = item.content?.label || ''
-    if (!title.trim() && !content.trim()) continue
-    const cleanText = content.replace(/[^\u4e00-\u9fa5a-zA-Z0-9\s.,!?]/g, '')
-    const splitTexts = splitMultiDemandText(cleanText)
-    splitTexts.forEach((singleText, idx) => {
-      cleaned.push({
-        reviewId: `${item.id.label}-${idx}`,
-        star: Number(item.rating?.label || 0),
-        title,
-        content: singleText,
-        publishDate: item.updated?.label,
-        originalRaw: item
-      })
-    })
+  if (!Array.isArray(rawReviews)) return [];
+  
+  const cleaned: any[] = [];
+  
+  for (let idx = 0; idx < rawReviews.length; idx++) {
+    const item = rawReviews[idx];
+    if (!item || typeof item !== 'object') continue;
+
+    // 尝试从多个字段提取内容
+    let content = item.content?.label || item.summary?.label || item['im:text']?.label || '';
+    const title = item.title?.label || item['im:name']?.label || '';
+    
+    // 如果 content 为空但有 title，用 title 作为 content
+    if (!content && title) content = title;
+    if (!content) continue;  // 如果还是空就跳过
+    
+    // 获取评分，防止为0
+    const ratingRaw = item['im:rating']?.label || item.rating?.label || '5';
+    const star = Math.min(5, Math.max(1, parseInt(String(ratingRaw).charAt(0)) || 5));
+    
+    // 获取 ID
+    const reviewId = item.id?.label || `review_${idx}`;
+    
+    // 清洗文本
+    let cleanText = String(content)
+      .replace(/\n+/g, ' ')
+      .replace(/\r/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    if (!cleanText) continue;
+    
+    // 如果内容很长，尝试分割；否则直接添加
+    let segments = [cleanText];
+    if (cleanText.length > 200) {
+      const split = splitMultiDemandText(cleanText);
+      if (split.length > 0) segments = split;
+    }
+
+    // 添加到结果集
+    segments.forEach((singleText, segIdx) => {
+      if (singleText && singleText.trim().length > 0) {
+        cleaned.push({
+          reviewId: `${reviewId}-${segIdx}`,
+          star: star,
+          rating: star,
+          title: title,
+          content: singleText.trim(),
+          publishDate: item.updated?.label || item.published?.label || new Date().toISOString(),
+          originalRaw: item
+        });
+      }
+    });
   }
-  return cleaned
+  
+  return cleaned;
 }
 
 // 3. IndexedDB 本地持久化存证
@@ -83,6 +134,10 @@ export const LLM_PROMPTS = {
 3. 固定5分类：Bug崩溃、交互体验、内容需求、付费广告负面、正向好评；
 4. 每条痛点附带至少3条对应reviewId作为证据支撑。
 评论数据集：{{reviewData}}
+硬性输出规则：
+1. 禁止输出任何开场白、中文解释、多余说明文字；
+2. 只输出标准JSON，不要markdown代码块、注释；
+3. 输出必须以 {{ 开头、}} 结尾，能直接被JSON.parse解析。
 `,
   generatePRD: `
 基于下方用户痛点集合生成标准化PRD，强制约束：
@@ -100,23 +155,23 @@ PRD完整内容：{{prdContent}}
 }
 
 export async function runLLMAnalysis(apiKey: string, prompt: string, data: any) {
-  const filledPrompt = prompt
-    .replace('{{reviewData}}', JSON.stringify(data))
-    .replace('{{painPointList}}', JSON.stringify(data))
-    .replace('{{prdContent}}', JSON.stringify(data))
-  const res = await fetch('https://api.openai.com/v1/chat/completions', {
+  // 直接请求本地服务端接口，不走前端代理
+  const res = await fetch('/api/llm', {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${apiKey}`,
       'Content-Type': 'application/json'
     },
-    body: JSON.stringify({
-      model: 'gpt-4o-mini',
-      messages: [{ role: 'user', content: filledPrompt }],
-      temperature: 0.1
-    })
+    body: JSON.stringify({ apiKey, prompt, data })
   })
-  return res.json()
+  // 先捕获非JSON错误响应
+  if (!res.ok) {
+    const errText = await res.text()
+    console.error("后端接口报错文本：", errText)
+    throw new Error(errText)
+  }
+  const resJson = await res.json()
+  console.log("硅基接口状态码：", res.status, "完整返回：", resJson)
+  return resJson
 }
 
 export function detectHallucination(aiResult: any, cleanReviews: any[]) {
