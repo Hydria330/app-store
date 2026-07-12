@@ -31,9 +31,14 @@ export function extractAppId(input: string): string | null {
   return null
 }
 
-// 强制拼接美区接口 URL
+// 强制拼接美区接口 URL（展示用完整 URL）
 export function buildRssUrl(appId: string, page = 1) {
   return `https://itunes.apple.com/us/rss/customerreviews/id=${appId}/sortBy=mostRecent/page=${page}/json`
+}
+
+// 浏览器端通过 Next.js rewrite 代理，规避 Apple RSS 的 CORS 限制
+function buildRssProxyUrl(appId: string, page = 1) {
+  return `/rss-proxy/us/rss/customerreviews/id=${appId}/sortBy=mostRecent/page=${page}/json`
 }
 
 interface AppleEntry {
@@ -78,15 +83,12 @@ export async function fetchReviews(
   const firstUrl = buildRssUrl(appId, 1)
 
   for (let page = 1; page <= maxPages; page++) {
-    const url = buildRssUrl(appId, page)
+    const url = buildRssProxyUrl(appId, page)
     let res: Response
     try {
       res = await fetch(url, { headers: { Accept: "application/json" } })
-    } catch (err) {
-      // 浏览器直连常见的 CORS / 网络失败
-      throw new NetworkError(
-        "无法直连 Apple RSS 接口（可能是浏览器 CORS 限制或网络问题）。本工具为纯前端运行，不经过任何后端中转，因此在部分网络环境下官方接口可能不可直接访问。",
-      )
+    } catch {
+      throw new NetworkError("无法获取 Apple RSS 评论（网络异常或代理不可用），请稍后重试。")
     }
     if (res.status === 403 || res.status === 429) throw new RateLimitError()
     if (!res.ok) throw new NetworkError(`Apple 接口返回异常状态码 ${res.status}`)

@@ -1,5 +1,6 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import { Activity, ShieldCheck } from "lucide-react"
 import { useApp } from "@/context/app-context"
 import { CompliancePanel } from "@/components/sections/compliance-panel"
@@ -13,6 +14,11 @@ import { TraceModal } from "@/components/trace-modal"
 
 export function AppShell() {
   const { auditCount, running } = useApp()
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   return (
     <div className="min-h-screen bg-background">
@@ -40,7 +46,7 @@ export function AppShell() {
             ) : null}
             <span className="inline-flex items-center gap-1 rounded-full border border-border px-2.5 py-1 text-[11px] text-muted-foreground">
               <ShieldCheck className="size-3.5 text-[color:var(--success)]" />
-              本地存证 {auditCount}
+              本地存证 {mounted ? auditCount : "—"}
             </span>
           </div>
         </div>

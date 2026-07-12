@@ -49,7 +49,7 @@ export function TaskLauncher() {
         <div className="flex flex-col gap-1.5">
           <label className="flex items-center gap-1.5 text-xs font-medium text-foreground" htmlFor="api-key">
             <KeyRound className="size-3.5 text-muted-foreground" />
-            OpenAI API Key
+            LLM API Key（SiliconFlow / OpenAI 兼容）
           </label>
           <div className="relative">
             <Input
@@ -57,7 +57,7 @@ export function TaskLauncher() {
               type={showKey ? "text" : "password"}
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
-              placeholder="sk-..."
+              placeholder="sk-...（也可在 .env.local 配置 SILICON_FLOW_API_KEY）"
               className="pr-10 font-mono text-xs"
               autoComplete="off"
             />
@@ -71,7 +71,7 @@ export function TaskLauncher() {
             </button>
           </div>
           <p className="text-[11px] text-muted-foreground">
-            密钥仅存储于本地浏览器 LocalStorage，不上传任何服务器。
+            密钥仅用于调用本地 /api/llm 代理；可存 LocalStorage，或在 .env.local 配置服务端密钥。
           </p>
         </div>
 
@@ -91,7 +91,7 @@ export function TaskLauncher() {
           </Button>
           <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
             <ShieldQuestion className="size-3.5" />
-            全程纯前端运行，无后端中转，所有分析证据本地留存防篡改。
+            评论采集走本地 RSS 代理，LLM 分析走 /api/llm，证据本地 IndexedDB 存档。
           </p>
         </div>
       </CardContent>
