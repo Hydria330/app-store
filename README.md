@@ -1,7 +1,8 @@
 # app-store
-App Store美区评论痛点抓取到产品优化PRD输出workflow网页
+App Store美区评论抓取-产品优化PRD输出完整workflow网页
+已部署vercel，直接点击右边链接打开可快速验证（需🪜）
 
-注：所有数据来源 Apple 官方 RSS Customer Reviews 公开接口 · 所有分析结论均可回溯至真实评论 · 仅用于产品研究
+注：所有数据来源 Apple 官方 RSS Customer Reviews 公开接口 · 所有分析结论均可回溯至真实评论 · 仅用于产品研究！！！
 
 一键启动workflow可实现：
 
