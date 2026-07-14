@@ -50,7 +50,7 @@ pnpm install
 # Start local development server
 pnpm run dev
 ```
-## License
+## 📄 License
 <details>
 <summary>📄 License (Click to expand)</summary>
 
