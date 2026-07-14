@@ -1,6 +1,5 @@
 # app-store
 App Store美区评论抓取-产品优化PRD输出完整workflow网页
-已部署vercel，直接点击右边链接打开可快速验证（需🪜）
 
 注：所有数据来源 Apple 官方 RSS Customer Reviews 公开接口 · 所有分析结论均可回溯至真实评论 · 仅用于产品研究！！！
 
@@ -18,3 +17,4 @@ App Store美区评论抓取-产品优化PRD输出完整workflow网页
 
 6.带溯源的测试用例生成
 
+已部署vercel，受免费版返回字数限制，仍需下载代码配置环境才可完整运行
