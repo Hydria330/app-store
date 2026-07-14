@@ -50,7 +50,7 @@ pnpm install
 # Start local development server
 pnpm run dev
 
-<details>
+##<details>
 <summary>📄 License (Click to expand)</summary>
 
 This project is licensed under the MIT License.
