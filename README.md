@@ -1,20 +1,21 @@
-# app-store
-App Store美区评论抓取-产品优化PRD输出完整workflow网页
+#  App‑Store US Review‑Driven PRD Generator
 
-注：所有数据来源 Apple 官方 RSS Customer Reviews 公开接口 · 所有分析结论均可回溯至真实评论 · 仅用于产品研究！！！
 
-一键启动workflow可实现：
 
-1.获取美区App-store评论真实数据
 
-2.自动进行数据清洗与验证
+> All data is fetched from Apple’s official public RSS Customer‑Reviews API.
+> Every analysis conclusion can be traced back to genuine user reviews.
+> This project is built exclusively for product‑research purposes only.
 
-3.数据整理与分类+痛点量化分析
+![Project Preview](./screenshot/preview.png)
 
-4.多版本迭代路线规划
+## ✨ One‑Click Full Workflow
+Execute the whole pipeline with just one click:
+1. 📥 Fetch authentic customer reviews from the US App‑Store
+2. 🧹 Perform automated data cleansing and validity verification
+3. 📊 Organize review data and quantify user pain‑points through classification analysis
+4. 🗓️ Generate multi‑version product iteration roadmaps
+5. 📄 Auto‑generate standardized Product Requirement Documents (PRDs)
+6. ✅ Output traceable test cases linked to original user comments
 
-5.标准化PRD自动生成
 
-6.带溯源的测试用例生成
-
-已部署vercel，受免费版返回字数限制，仍需下载代码配置环境才可完整运行
