@@ -50,6 +50,31 @@ pnpm install
 # Start local development server
 pnpm run dev
 ```
+
+## 💡 Project‑Reflection & Future Optimization Direction
+<details>
+<summary>View project limitations and subsequent improvement ideas (Click to expand)</summary>
+
+### Current Limitations
+This workflow only relies on publicly available US App‑Store review data from Apple RSS API.
+It cannot obtain core information including the existing product status, internal operation metrics, product development goals and quarterly OKRs.
+
+As a result, the generated PRD and version‑iteration plans are generalized rather than highly‑targeted.
+The analysis outcomes are derived purely from user complaints, which means the output cannot match the actual product situation automatically.
+Manual screening and adjustments from product‑team members are mandatory to align conclusions with the real‑world product roadmap.
+
+### Follow‑up Optimization Plans for production‑level usage
+1. Supplement Product Baseline Information
+Add an input area for product managers to fill in the present‑product features, known existing problems and long‑term product positioning. The LLM will combine these contents when generating subsequent iteration plans.
+2. Integrate Official Back‑end Data
+Access App Store Connect analytics data, including download volume, crash rate, version distribution and paying‑user data, to quantify the priority of user‑side pain‑points instead of only depending on comment frequency.
+3. Introduce human‑in‑the‑loop confirmation mechanism
+Set intermediate reviewing steps: after the initial PRD draft is generated, product members mark high‑priority requirements, then the model optimizes details based on manual feedback.
+4. Build historical‑version data repository
+Store past iteration records, so the model can avoid repeatedly proposing features that the team has already rejected in previous versions.
+</details>
+
+
 ## 📄 License
 <details>
 <summary>📄 License (Click to expand)</summary>
